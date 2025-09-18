@@ -24,7 +24,6 @@ import com.example.AgendaLimpio.databinding.ActivityWelcomeBinding
 import java.io.File
 
 class WelcomeActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityWelcomeBinding
     private val viewModel: WelcomeViewModel by viewModels {
         WelcomeViewModelFactory(application, AppDatabase.getDatabase(this))

@@ -16,13 +16,15 @@ interface PedidoTrabajoCrossRefDao {
     @Query("DELETE FROM PedidoTrabajoCrossRef WHERE idPedido = :pedidoId")
     suspend fun deleteAllForPedido(pedidoId: String)
 
-    // ¡NUEVA FUNCIÓN TRANSACCIONAL!
 // Esta es la función que usaremos. Ejecuta borrar y luego insertar en una sola operación.
     @Transaction
     suspend fun updateTrabajosForPedido(pedidoId: String, crossRefs: List<PedidoTrabajoCrossRef>) {
         deleteAllForPedido(pedidoId)
         insertAll(crossRefs)
     }
+
+    @Query("SELECT * FROM PedidoTrabajoCrossRef WHERE idPedido = :pedidoId")
+    suspend fun getTrabajosForPedido(pedidoId: String): List<PedidoTrabajoCrossRef>
 
     @Query("SELECT * FROM PedidoTrabajoCrossRef WHERE isModified = 1")
     suspend fun getAllModified(): List<PedidoTrabajoCrossRef>

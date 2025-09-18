@@ -19,12 +19,17 @@ import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.AgendaLimpio.Data.DataBase.AppDatabase
 import com.example.AgendaLimpio.Data.Model.Pedido
+import com.example.AgendaLimpio.Data.Model.Trabajo
 import com.example.AgendaLimpio.Fotos.FotosActivity
 import com.example.AgendaLimpio.Pedidos.Adapter.TrabajosAdapter
+import com.example.AgendaLimpio.Pedidos.Detail.Trabajos.TrabajosEvent
+import com.example.AgendaLimpio.Pedidos.Detail.Trabajos.TrabajosViewModel
+import com.example.AgendaLimpio.Pedidos.Detail.Trabajos.TrabajosViewModelFactory
 import com.example.AgendaLimpio.R
 import com.example.AgendaLimpio.databinding.ActivityPedidosDetailsBinding
 import kotlinx.coroutines.launch
@@ -33,14 +38,14 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-class PedidosDetailsActivity : AppCompatActivity() {
+class PedidosDetailsActivity  : AppCompatActivity() {
     private lateinit var binding: ActivityPedidosDetailsBinding
     private lateinit var trabajosAdapter: TrabajosAdapter
+    private var currentPedidoId: String? = null
 
-    private val viewModel: PedidosDetailsViewModel by viewModels {
-        val db = AppDatabase.getDatabase(this)
-        PedidoDetailViewModelFactory(application, db.pedidoDao(), db.trabajoDao(), db.pedidoTrabajoCrossRefDao())
-    }
+    // Declaramos los dos ViewModels
+    private lateinit var pedidosDetailsViewModel: PedidosDetailsViewModel
+    private lateinit var trabajosViewModel: TrabajosViewModel
 
     companion object {
         const val EXTRA_PEDIDO_ID = "extra_pedido_id"
@@ -52,24 +57,40 @@ class PedidosDetailsActivity : AppCompatActivity() {
         binding = ActivityPedidosDetailsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val pedidoId = intent.getStringExtra(EXTRA_PEDIDO_ID)
-        if (pedidoId == null) {
+        currentPedidoId = intent.getStringExtra(EXTRA_PEDIDO_ID)
+        if (currentPedidoId == null) {
             Toast.makeText(this, "Error: No se ha especificado un ID de pedido.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
 
+        setupViewModels()
         setupUI()
         setupClickListeners()
-        observeViewModel()
+        setupObservers()
 
-        viewModel.loadPedidoAndTrabajos(pedidoId)
+        // Pedimos a cada ViewModel que cargue su parte
+        pedidosDetailsViewModel.loadPedido(currentPedidoId!!)
+        trabajosViewModel.loadTrabajos(currentPedidoId!!)
+    }
+
+    private fun setupViewModels() {
+        val database = AppDatabase.getDatabase(applicationContext)
+        val pedidoDao = database.pedidoDao()
+        val trabajoDao = database.trabajoDao()
+        val crossRefDao = database.pedidoTrabajoCrossRefDao()
+
+        val pedidoViewModelFactory = PedidosDetailsViewModelFactory(application, pedidoDao)
+        val trabajosViewModelFactory = TrabajosViewModelFactory(application, trabajoDao, crossRefDao)
+
+        pedidosDetailsViewModel = ViewModelProvider(this, pedidoViewModelFactory).get(PedidosDetailsViewModel::class.java)
+        trabajosViewModel = ViewModelProvider(this, trabajosViewModelFactory).get(TrabajosViewModel::class.java)
     }
 
     private fun setupUI() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         trabajosAdapter = TrabajosAdapter { trabajoId, isChecked ->
-            viewModel.onTrabajoCheckboxChanged(trabajoId, isChecked)
+            trabajosViewModel.onTrabajoCheckboxChanged(trabajoId, isChecked)
         }
         binding.recyclerViewTrabajos.adapter = trabajosAdapter
         binding.recyclerViewTrabajos.layoutManager = LinearLayoutManager(this)
@@ -79,7 +100,8 @@ class PedidosDetailsActivity : AppCompatActivity() {
         binding.btnGuardarCambios.setOnClickListener {
             val estado = binding.spinnerEstado.selectedItem.toString()
             val observaciones = binding.txtObservaciones.text.toString()
-            viewModel.saveChanges(estado, observaciones)
+            pedidosDetailsViewModel.saveChanges(estado, observaciones)
+            trabajosViewModel.saveChanges(currentPedidoId!!)
         }
 
         binding.txtFechaInicio.setOnClickListener { showDatePickerInicio() }
@@ -91,19 +113,28 @@ class PedidosDetailsActivity : AppCompatActivity() {
         binding.btnMaps.setOnClickListener { buscarEnMaps() }
     }
 
-    private fun observeViewModel() {
-        viewModel.uiState.observe(this, Observer { state ->
+    private fun setupObservers() {
+        pedidosDetailsViewModel.uiState.observe(this, Observer { state ->
             binding.progressBar.visibility = if (state.isLoading) View.VISIBLE else View.GONE
-            state.pedido?.let()
-            {
+            state.pedido?.let {
                 populateUi(it)
             }
+        })
+
+        pedidosDetailsViewModel.events.observe(this, Observer { event ->
+            when (event) {
+                is PedidosDetailsEvent.ShowToast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
+            }
+        })
+
+        trabajosViewModel.uiState.observe(this, Observer { state ->
+            binding.progressBar.visibility = if (state.isLoading) View.VISIBLE else View.GONE
             trabajosAdapter.setData(state.todosLosTrabajos, state.trabajosSeleccionadosIds)
         })
 
-        viewModel.events.observe(this, Observer { event ->
+        trabajosViewModel.events.observe(this, Observer { event ->
             when (event) {
-                is PedidosDetailsEvent.ShowToast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
+                is TrabajosEvent.ShowToast -> Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show()
             }
         })
     }
@@ -116,9 +147,7 @@ class PedidosDetailsActivity : AppCompatActivity() {
         binding.txtPoblacion.text = pedido.poblacion ?: "No disponible"
         binding.txtImporte.text = String.format(Locale.getDefault(), "%.2f €", pedido.totalPedido ?: 0.0)
         binding.txtObservaciones.setText(pedido.observaciones ?: "")
-
-        val displayDateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        binding.txtFechaPedido.text = pedido.fecha?.let { displayDateFormat.format(it) } ?: "No especificada"
+        binding.txtFechaPedido.text = pedido.fecha?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(it) } ?: "No especificada"
 
         if (pedido.Inicio != null) {
             binding.txtFechaInicio.text = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(pedido.Inicio)
@@ -145,39 +174,39 @@ class PedidosDetailsActivity : AppCompatActivity() {
     }
 
     private fun showDatePickerInicio() {
-        val currentInicio = viewModel.uiState.value?.pedido?.Inicio ?: Date()
+        val currentInicio = pedidosDetailsViewModel.uiState.value?.pedido?.Inicio ?: Date()
         val calendar = Calendar.getInstance().apply { time = currentInicio }
         DatePickerDialog(this, { _, year, month, day ->
             val newCalendar = Calendar.getInstance().apply { time = currentInicio }
             newCalendar.set(year, month, day)
-            viewModel.onDateOrTimeUpdated(newCalendar.time)
+            pedidosDetailsViewModel.onDateOrTimeUpdated(newCalendar.time)
         }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
     }
 
     private fun showTimePickerInicio() {
-        val currentInicio = viewModel.uiState.value?.pedido?.Inicio ?: Date()
+        val currentInicio = pedidosDetailsViewModel.uiState.value?.pedido?.Inicio ?: Date()
         val calendar = Calendar.getInstance().apply { time = currentInicio }
         TimePickerDialog(this, { _, hour, minute ->
             val newCalendar = Calendar.getInstance().apply { time = currentInicio }
             newCalendar.set(Calendar.HOUR_OF_DAY, hour)
             newCalendar.set(Calendar.MINUTE, minute)
-            viewModel.onDateOrTimeUpdated(newCalendar.time)
+            pedidosDetailsViewModel.onDateOrTimeUpdated(newCalendar.time)
         }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
     }
 
     private fun showDatePickerFin() {
-        val currentFin = viewModel.uiState.value?.pedido?.fechaFin ?: Date()
+        val currentFin = pedidosDetailsViewModel.uiState.value?.pedido?.fechaFin ?: Date()
         val calendar = Calendar.getInstance().apply { time = currentFin }
         DatePickerDialog(this, { _, year, month, day ->
             val newCalendar = Calendar.getInstance().apply { time = currentFin }
             newCalendar.set(year, month, day)
-            viewModel.onFechaFinUpdated(newCalendar.time)
+            pedidosDetailsViewModel.onFechaFinUpdated(newCalendar.time)
         }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
     }
 
     private fun openPhotosActivity(photoType: String) {
         val intent = Intent(this, FotosActivity::class.java).apply {
-            putExtra("EXTRA_PEDIDO_ID", viewModel.uiState.value?.pedido?.pedido)
+            putExtra("EXTRA_PEDIDO_ID", currentPedidoId)
             putExtra("EXTRA_PHOTO_TYPE", photoType)
         }
         startActivity(intent)
@@ -194,7 +223,7 @@ class PedidosDetailsActivity : AppCompatActivity() {
             .setPositiveButton("Guardar") { _, _ ->
                 val ref = editTextRef.text.toString().trim()
                 val nombre = editTextNombre.text.toString().trim()
-                viewModel.onAddNewTrabajo(ref, nombre)
+                trabajosViewModel.onAddNewTrabajo(ref, nombre)
             }
             .setNegativeButton("Cancelar", null)
             .show()
@@ -202,7 +231,7 @@ class PedidosDetailsActivity : AppCompatActivity() {
 
     @SuppressLint("QueryPermissionsNeeded")
     private fun buscarEnMaps() {
-        val pedido = viewModel.uiState.value?.pedido ?: return
+        val pedido = pedidosDetailsViewModel.uiState.value?.pedido ?: return
         val addressString = "${pedido.domicilio ?: ""}, ${pedido.poblacion ?: ""}, ${pedido.provincia ?: ""}"
         if (addressString.isBlank()) {
             Toast.makeText(this, "No hay dirección para mostrar en el mapa.", Toast.LENGTH_SHORT).show()

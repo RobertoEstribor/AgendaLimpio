@@ -24,6 +24,7 @@ import com.example.AgendaLimpio.Data.Model.ApiResponse
 import com.example.AgendaLimpio.Data.Model.ApiResponsePedidos
 import com.example.AgendaLimpio.Data.Model.PedidoActualizadoRequest
 import com.example.AgendaLimpio.Data.Model.PedidoTrabajoCrossRef
+import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,7 +38,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-// El UiState y Event se quedan igual que en mis propuestas anteriores
 // --- Estado y Eventos para la comunicación ---
 data class WelcomeUiState(
     val welcomeMessage: String = "Bienvenido...",
@@ -129,63 +129,58 @@ class WelcomeViewModel(
                     cargarUltimaFechaSinc()
                 )
                 if (response.isSuccessful) {
-                    val stringResponse = response.body()
-                    if(stringResponse != null){
-
-                        val apiResponsePedidos = try {
-                            ApiClient.customGson.fromJson(
-                                stringResponse,
-                                ApiResponsePedidos::class.java
-                            )
-                        } catch (e: JsonSyntaxException) {
-                            Log.e("WelcomeActivity", "Fallo al parsear JSON: ${e.message}")
-                            null
-                        }
-
-                        if (apiResponsePedidos != null && !apiResponsePedidos.Pedido.isNullOrEmpty()) {
-                            val modifiedPedidoIds =
-                                pedidoDao.getModifiedPedidos().map { it.pedido }.toSet()
-                            val pedidosConTrabajosModificadosIds =
-                                crossRefDao.getAllModified().map { it.idPedido }.toSet()
-                            val allUntouchablePedidoIds =
-                                modifiedPedidoIds + pedidosConTrabajosModificadosIds
-                            val pedidosParaActualizar =
-                                apiResponsePedidos.Pedido.filter { !allUntouchablePedidoIds.contains(it.pedido) }
-                            val crossRefsToInsert = mutableListOf<PedidoTrabajoCrossRef>()
-                            for (pedido in pedidosParaActualizar) {
-                                pedido.referencia?.let { refString ->
-                                    val trabajoIds = refString.replace("<Referencia>", "")
-                                        .replace("</Referencia>", "").split(',')
-                                        .filter { it.isNotBlank() }
-                                    for (trabajoId in trabajoIds) {
-                                        crossRefsToInsert.add(
-                                            PedidoTrabajoCrossRef(
-                                                idPedido = pedido.pedido,
-                                                idTrabajo = trabajoId,
-                                                isModified = false
+                    val jsonString = response.body()
+                    if (!jsonString.isNullOrBlank()) {
+                        try {
+                            val apiResponsePedidos = Gson().fromJson(jsonString, ApiResponsePedidos::class.java)
+                            if (apiResponsePedidos != null && !apiResponsePedidos.Pedido.isNullOrEmpty()) {
+                                val modifiedPedidoIds =
+                                    pedidoDao.getModifiedPedidos().map { it.pedido }.toSet()
+                                val pedidosConTrabajosModificadosIds =
+                                    crossRefDao.getAllModified().map { it.idPedido }.toSet()
+                                val allUntouchablePedidoIds =
+                                    modifiedPedidoIds + pedidosConTrabajosModificadosIds
+                                val pedidosParaActualizar =
+                                    apiResponsePedidos.Pedido.filter { !allUntouchablePedidoIds.contains(it.pedido) }
+                                val crossRefsToInsert = mutableListOf<PedidoTrabajoCrossRef>()
+                                for (pedido in pedidosParaActualizar) {
+                                    pedido.referencia?.let { refString ->
+                                        val trabajoIds = refString.replace("<Referencia>", "")
+                                            .replace("</Referencia>", "").split(',')
+                                            .filter { it.isNotBlank() }
+                                        for (trabajoId in trabajoIds) {
+                                            crossRefsToInsert.add(
+                                                PedidoTrabajoCrossRef(
+                                                    idPedido = pedido.pedido,
+                                                    idTrabajo = trabajoId,
+                                                    isModified = false
+                                                )
                                             )
-                                        )
+                                        }
                                     }
                                 }
-                            }
 
-                            // 2. Usamos una transacción para garantizar que todo se guarde correctamente
-                            db.withTransaction {
-                                pedidoDao.insertAll(pedidosParaActualizar)
-                                for (pedido in pedidosParaActualizar) {
-                                    crossRefDao.deleteAllForPedido(pedido.pedido)
+                                // 2. Usamos una transacción para garantizar que todo se guarde correctamente
+                                db.withTransaction {
+                                    pedidoDao.insertAll(pedidosParaActualizar)
+                                    for (pedido in pedidosParaActualizar) {
+                                        crossRefDao.deleteAllForPedido(pedido.pedido)
+                                    }
+                                    crossRefDao.insertAll(crossRefsToInsert)
                                 }
-                                crossRefDao.insertAll(crossRefsToInsert)
+                                guardarUltFechaSincronizacion()
+                                _events.value = WelcomeEvent.ShowToast("Pedidos actualizados.")
+                                loadDashboardData()
+
+                            } else {
+                                _events.value = WelcomeEvent.ShowToast("No se encontraron pedidos nuevos.")
                             }
-                            guardarUltFechaSincronizacion()
-                            _events.value = WelcomeEvent.ShowToast("Pedidos actualizados.")
-                            loadDashboardData()
-
-                        } else {
-                            _events.value = WelcomeEvent.ShowToast("No se encontraron pedidos nuevos.")
+                        } catch (e: JsonSyntaxException) {
+                            handleSyncError("Error al procesar la respuesta del servidor (JSON inválido).")
                         }
+                    } else {
+                        _events.value = WelcomeEvent.ShowToast("No se encontraron pedidos nuevos.")
                     }
-
                 } else {
                     handleSyncError("Error del servidor al sincronizar")
                 }
