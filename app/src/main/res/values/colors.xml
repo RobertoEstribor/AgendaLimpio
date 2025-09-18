@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="btnColor">#2C3556</color>
+    <color name="background_color_prueba">#6ddbea</color>
+
+    <color name="statusBar">#d8f1f3</color>
+
+    <!-- Colores base de la App -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="mi_color_flotante">#2C3556</color> <!-- Un tono de verde azulado, por ejemplo -->
+
+    <!-- Nuevos colores de marca -->
+    <color name="brand_primary">#2C3556</color>
+    <color name="brand_primary_dark">#1A234A</color>
+
+    <!-- Colores específicos de UI -->
+    <color name="screen_background">#F0F4F8</color> <!-- Un gris muy claro -->
+
+</resources>

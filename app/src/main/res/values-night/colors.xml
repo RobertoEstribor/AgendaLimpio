@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+    Este archivo anula los colores de `values/colors.xml` cuando la app está en modo oscuro.
+    Solo es necesario definir los colores que cambian.
+    -->
+
+    <!-- El color de marca primario puede ser ligeramente más claro para tener mejor visibilidad -->
+    <color name="brand_primary">#5A6794</color>
+    <!-- El variante oscuro también se ajusta -->
+    <color name="brand_primary_dark">#3A4A7A</color>
+
+    <!-- El color de fondo de la pantalla es la diferencia principal -->
+    <color name="screen_background">#121212</color> <!-- Gris oscuro estándar de Material Design -->
+
+    <!-- El color del botón se puede aclarar un poco para que destaque más -->
+    <color name="btnColor">#4A5B8A</color>
+
+    <!-- El color de la barra de estado debe ser oscuro -->
+    <color name="statusBar">#1F294A</color>
+
+    <!-- En modo oscuro, el texto "secundario" que antes era negro ahora debe ser blanco -->
+    <color name="black">#FFFFFFFF</color>
+</resources>

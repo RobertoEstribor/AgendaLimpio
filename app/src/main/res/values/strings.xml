@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Agenda Pedidos</string>
+    <string name="sesion_init">Inicar Sesión</string>
+    <string name="change_cod_company">Cambiar Código de Empresa</string>
+    <string name="Users">Usuario</string>
+    <string name="password">Contraseña</string>
+    <string name="CompanyNumber">Número de Empresa</string>
+    <string name="Intro_companyNumber">Introduce el número de empresa</string>
+    <string name="logo_de_la_empresa">Logo de la empresa</string>
+    <string name="log_out">Cerrar Sesión</string>
+    <string name="save">Guardar</string>
+</resources>
